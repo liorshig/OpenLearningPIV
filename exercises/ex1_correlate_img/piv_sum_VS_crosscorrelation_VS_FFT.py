@@ -5,230 +5,129 @@
 
 #  start analasys of two picture from piv challenge going through the steps in PIV basics
 
-# In[26]:
+# In[121]:
 
 
 import numpy as np
 from matplotlib import pyplot as plt
-
-
-# In[27]:
-
-
-
+from scipy.signal import correlate2d
 # load the images: 
 a = plt.imread('B005_1.tif')
 b = plt.imread('B005_2.tif')
-plt.figure(figsize=(12,10))
-plt.subplot(1,2,1)
-plt.imshow(a,cmap="gray")
-plt.subplot(1,2,2)
-plt.imshow(b,cmap="gray")
-
-
-# In[28]:
-
-
-#interrogation windows. 
-size=32 #size 32X32
-ia = a[:size,:size].copy()
-ib = b[:size,:size].copy()
-plt.figure()
-plt.subplot(1,2,1)
-plt.imshow(ia,cmap='gray')
-plt.subplot(1,2,2)
-plt.imshow(ib,cmap='gray')
-
-
-# let's look at the sustraction of both sub images: $im_a-im_b$ in order to spot the differences
-
-# In[29]:
-
-
-#lets start with simple substraction to find the displacemants between a to b
-plt.imshow(ib-ia,cmap='gray')
-plt.title('Without shift')
-
-
-# So the images are defenetley not the same. lets try to shift $image_a$ by 1 pixel 
-
-# In[30]:
-
-
-# lets shift ia by 1 pixle down
-plt.imshow(ib-np.roll(ia,1,axis=0),cmap='gray')
-plt.title('Difference when IA has been shifted by 1 pixel')
-
-
-# let's try to find the displacemant by going through all the combinations considering the maximun posible diplacemant is 8 pixels in each axis.
-
-# In[31]:
-
 
 #lets find the displacemant
 def match_template(img, template,maxroll=8):
     mindist = float('inf')
-    idx = (-1,-1)
-    for y in range(-maxroll,maxroll+1):
-        for x in range(-maxroll,maxroll+1):
+    idx = (0,0)
+    for row in range(-maxroll,maxroll+1):
+        for col in range(-maxroll,maxroll+1):
         #calculate Euclidean distance
-            dist = np.sqrt(np.sum(np.square(template - np.roll(img,(x,y),axis=(0,1)))))
+            dist = np.sqrt(np.sum(np.square(template - np.roll(img,(row,col),axis=(0,1)))))
             if dist < mindist:
                 mindist = dist
-                idx = (x,y)
-                
+                idx = (row,col)
     return [mindist, idx]
-
-
-# In[32]:
+#lets find the displacemant
+def my_correlate2d(img, template):
+    cor=np.zeros(2*np.shape(img)[0],2*np.shape(img)[0])
+    for row in range(-maxroll,maxroll+1):
+        for col in range(-maxroll,maxroll+1):
+            mindist=-float('inf')
+        #calculate Euclidean distance
+            #dist =np.abs(np.sum(template*np.roll(img,(y,x),axis=(0,1))))/((np.sqrt(np.sum(template**2)))*(np.sqrt(np.sum(np.roll(img,(y,x),axis=(0,1))**2))))
+            cor[row,col]=np.sum(template*np.roll(img,(row,col),axis=(0,1)))
+#            if cor > mindist:
+#                mindist = cor
+#                idx = (row,col)
+                
+    return cor
 
 
 # let's test that it works indeed by manually rolling (shifting circurlarly) the same image
-match_template(ia,np.roll(ia,2,axis=0))
-
-
-# it worked! we got zero distance and a displacemant of 2 pixels exactly what we expected.
-# let's apply it on the sub pictures.
-
-# In[33]:
-
-
-# indeed, when we find the correct shift, we got zero distance. it's not so in real images:
+mindist, idx =match_template(ia-ia.mean(),np.roll(ia,(3,7),axis=(0,1))-ia.mean())
+print('Minimal distance = %f' % mindist)
+print('idx = %d, %d' % idx)
+cor=my_correlate2d(ia-ia.mean(),np.roll(ia,(2,3),axis=(0,1))-ia.mean())
+i,j = np.unravel_index(cor.argmax(), cor.shape)
+print('cor2d:%d,%d'%(i,j))
+c = correlate2d(np.roll(ia,(1,8),axis=(0,1))-ia.mean(),np.roll(ia,(0,0),axis=(0,1))-ia.mean())
+i,j = np.unravel_index(c[31-8:32+8,31-8:32+8].argmax(), c[31-8:32+8,31-8:32+8].shape)
+print('cor2d:%d,%d'%(i-8,j-8))
 mindist, idx = match_template(ia,ib)
 print('Minimal distance = %f' % mindist)
 print('idx = %d, %d' % idx)
-
-
-# firstly, the minimal distance is defentely not zero. But maybe it's good enough lets see the substraction on $im_b(i,j)-im_a(i,j+1)$
-
-# In[34]:
-
-
-#lets check if it looks the same
-plt.figure()
-plt.subplot(1,2,1)
-plt.imshow(np.roll(ia,idx,(0,1)),cmap='gray')
-plt.subplot(1,2,2)
-plt.imshow(ib,cmap='gray')
-plt.figure()
-plt.imshow(np.roll(ia,idx,(0,1))-ib,cmap='gray')
-
-
-# Well it's not the exact shift indeed, but it is closer than before.
-# let's find all the shifts and time it using the simple algoritm we intreduced here.
-
-# In[67]:
-
-
-i,j=np.shape(a)
-print(i)
-print(j)
-size=32
-Xwin_num=i/size #number of windows given size of sizeXsize pixels of each window
-Ywin_num=j/size # "---"
-cor, dispx, dispy=-10*np.ones([Xwin_num,Ywin_num]), -10*np.ones([Xwin_num,Ywin_num]), -10*np.ones([Xwin_num,Ywin_num])
-for X in range(Xwin_num):
-    for Y in range(Ywin_num):
-        #print(X,Y)
-        ia=a[X*size:(X+1)*size,Y*size:(Y+1)*size].copy()
-        ib=b[X*size:(X+1)*size,Y*size:(Y+1)*size].copy()
-        cor[X,Y], (dispx[X,Y],dispy[X,Y]) = match_template(ia-np.mean(ia),ib-np.mean(ib))
-        
-
-        
-    
-
-
-# In[68]:
-
-
-plt.figure(figsize=(12,10))
-x = np.arange(size/2-1, i, size)
-y = np.arange(size/2-1, i, size)
-Y, X = np.meshgrid(y, x)
-M = np.sqrt(pow(dispx, 2) + pow(dispy, 2))
-q = plt.quiver(X, Y, dispx, dispy,M)
-plt.show()
-
-q = plt.quiver(X, Y, np.ones([i,j]), np.zeros([i,j]),M)
-# ## lets try using cross corelation
-
-# In[17]:
-
-
-from scipy.signal import correlate2d
-ia = a[:size,:size].copy()
-ib = b[:size,:size].copy()
-c = correlate2d(ia-ia.mean(),ib-ib.mean())
-# not it's twice bigger than the original windows, as we can shift ia by maximum it's size horizontally and vertically
-print('Size of the correlation map %d x %d' % c.shape)
-
-
-# In[18]:
-
-
-# let's see how the correlation map looks like:
-from mpl_toolkits.mplot3d import Axes3D
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-cx,cy = np.meshgrid(range(c.shape[0]), range(c.shape[1]))
-
-ax.plot_surface(cx,cy,c,cmap= "jet", linewidth=0.2)
-plt.title('Correlation map - peak is the most probable shift')
-
-
-# In[19]:
-
-
-plt.imshow(c, cmap='gray')
-
+mindist, idx = my_correlate(ia,ib)
+print('Minimal distance = %f' % mindist)
+print('idx = %d, %d' % idx)
+c = correlate2d(ib-ib.mean(),ia-ia.mean())
 i,j = np.unravel_index(c.argmax(), c.shape)
-
-print('i = {}, j= {}'.format(i,j))
-
-plt.plot(j,i,'ro')
-
-
-# In[69]:
-
-
+print('cor2d:%d,%d'%(i-31,j-31))
 iw = 32
 
-x,y,u,v = [],[],[],[]
+x,y,u_dif,v_dif,u_cor,v_cor = [],[],[],[],[],[]
 for k in range(0,a.shape[0],iw):
     for m in range(0,a.shape[1],iw):
-        ia = a[k:k+iw,m:m+iw]
-        ib = b[k:k+iw,m:m+iw]
-        c = correlate2d(ia-ia.mean(),ib-ib.mean())
+        ia = a[k:k+iw,m:m+iw].copy()
+        ib = b[k:k+iw,m:m+iw].copy()
+        cor, (i,j) = match_template(ia-ia.mean(),ib-ib.mean())
+        y.append(k+iw/2.-1)
+        x.append(m+iw/2.-1)
+        u_dif.append(i)
+        v_dif.append(j)
+        c = correlate2d(ib-ib.mean(),ia-ia.mean())
+        c=c[31-8:32+8,31-8:32+8]
         i,j = np.unravel_index(c.argmax(), c.shape)
-        x.append(k-iw/2.)
-        y.append(m-iw/2.)
-        u.append(i - 31)
-        v.append(j - 31)
-
-
-# In[70]:
-
+        u_cor.append(i -8)
+        v_cor.append(j- 8)
 
 plt.figure(figsize=(12,10))
-M = np.sqrt(pow(np.array(u), 2) + pow(np.array(v), 2))
-plt.quiver(x,y,u,v,M)
+M_dif = np.sqrt(pow(np.array(u_dif), 2) + pow(np.array(v_dif), 2))
+plt.quiver(x,y,v_dif,u_dif,M)
 
-
-# In[65]:
-
+plt.figure(figsize=(12,10))
+M_cor = np.sqrt(pow(np.array(u_cor), 2) + pow(np.array(v_cor), 2))
+plt.quiver(x,y,v_cor,u_cor,M)
+#the results are abit different les find why
+q= np.array(M_dif)==np.array(M_cor)
+problem_i=np.where(q==False)
+k=int(y[problem_i[0][1]]-(iw/2.-1))
+m=int(x[problem_i[0][1]]-(iw/2.-1))
+ia = a[k:k+iw,m:m+iw].copy()
+ib = b[k:k+iw,m:m+iw].copy()
+mindist, idx =match_template(ia-ia.mean(),ib-ib.mean())
+print('Minimal distance = %f' % mindist)
+print('idx = %d, %d' % idx)
+c = correlate2d(ib-ib.mean(),ia-ia.mean())
+i,j = np.unravel_index(c.argmax(), c.shape)
+print('cor2d:%d,%d'%(i-31,j-31))
 iw = 32
+plt.imshow(c,cmap='gray')
+plt.plot(j,i,'ro')
+plt.plot(31+idx[1],31+idx[0],'bo')
+c[31+idx[0],31+idx[1]]
+c.max()
+dist_diff = np.sqrt(np.sum(np.square(ib - np.roll(ia,(idx[0],idx[1]),axis=(0,1)))))
+dist_cor= np.sqrt(np.sum(np.square(ib - np.roll(ia,(i-31,j-31),axis=(0,1)))))
 
-dispx,dispy,dispu,dispv = [],[],[],[]
-for k in range(0,a.shape[0],iw):
-    for m in range(0,a.shape[1],iw):
-        ia = a[k:k+iw,m:m+iw]
-        ib = b[k:k+iw,m:m+iw]
-        cor, (ix,iy) = match_template(ia-np.mean(ia),ib-np.mean(ib))
-        dispx.append(k+iw/2.)
-        dispy.append(m+iw/2.)
-        dispu.append(ix)
-        dispv.append(iy)
-plt.figure(figsize=(12,10))
-dispM = np.sqrt(pow(np.array(dispu), 2) + pow(np.array(dispv), 2))
-plt.quiver(dispx,dispy,dispu,dispv,dispM)
+#second problematic point
+k=int(y[problem_i[0][1]]-(iw/2.-1))
+m=int(x[problem_i[0][1]]-(iw/2.-1))
+ia = a[k:k+iw,m:m+iw].copy()
+ib = b[k:k+iw,m:m+iw].copy()
+mindist, idx = match_template(ia-ia.mean(),ib-ib.mean())
+print('Minimal distance = %f' % mindist)
+print('idx = %d, %d' % idx)
+c = correlate2d(ib-ib.mean(),ia-ia.mean())
+i,j = np.unravel_index(c.argmax(), c.shape)
+print('cor2d:%d,%d'%(i-31,j-31))
+iw = 32
+plt.imshow(c,cmap='gray')
+plt.plot(j,i,'ro')
+plt.plot(31+idx[1],31+idx[0],'bo')
+#checklist
+c[31+idx[0],31+idx[1]] #mindif check in crosscorelation
+c.max() #max crosscorraltion 
+np.sum((ib-ib.mean())*(np.roll(ia,(i-31,j-31),axis=(0,1))-ia.mean())) #check if crosscorralatio is miltiplicATION
+np.sum((ib-ib.mean())*(np.roll(ia,(idx[0],idx[1]),axis=(0,1))-ia.mean()))
+dist_diff = np.sqrt(np.sum(np.square(ib - np.roll(ia,(idx[0],idx[1]),axis=(0,1)))))#CHECK MINDIF
+dist_cor= np.sqrt(np.sum(np.square(ib - np.roll(ia,(i-31,j-31),axis=(0,1)))))#CHECK WHAT THE DIF FROM THE CROSSCORRELATION
