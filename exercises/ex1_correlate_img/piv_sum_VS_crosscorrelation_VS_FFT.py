@@ -46,6 +46,24 @@ def my_correlate2d(img, template, maxroll=8):
                 cor[maxroll+row,maxroll-col]=np.sqrt(np.sum(np.square(np.roll(template,col,axis=1)[row::,col::] - np.roll(img,row,axis=0)[row::,col::])))
                 cor[maxroll-row,maxroll+col]=np.sqrt(np.sum(np.square(np.roll(template,row,axis=0)[row::,col::] - np.roll(img,col,axis=1)[row::,col::])))
     return cor
+def my_crosscor2d(img, template, maxroll=8):
+    cor=np.zeros((maxroll*2+1,maxroll*2+1))
+    for row in range(maxroll+1):
+        for col in range(maxroll+1):
+            if col==0 and row==0:
+                cor[maxroll,maxroll]=np.sum(template * img)
+            elif col==0 and row!=0:
+                cor[maxroll+row,maxroll]=np.sum(template[row::,:] * np.roll(img,row,axis=0)[row::,:])
+                cor[maxroll-row,maxroll]=np.sum(img[row::,:] * np.roll(template,row,axis=0)[row::,:])
+            elif row==0 and col!=0:
+                cor[maxroll,maxroll+col]=np.sum(template[:,col::] * np.roll(img,col,axis=1)[:,col::])
+                cor[maxroll,maxroll-col]=np.sum(img[:,col::] * np.roll(template,col,axis=1)[:,col::])
+            else:
+                cor[maxroll+row,maxroll+col]=np.sum(template[row::,col::] * np.roll(img,(row,col),axis=(0,1))[row::,col::])
+                cor[maxroll-row,maxroll-col]=np.sum(img[row::,col::] * np.roll(template,(row,col),axis=(0,1))[row::,col::])
+                cor[maxroll+row,maxroll-col]=np.sum(np.roll(template,col,axis=1)[row::,col::] * np.roll(img,row,axis=0)[row::,col::])
+                cor[maxroll-row,maxroll+col]=np.sum(np.roll(template,row,axis=0)[row::,col::] * np.roll(img,col,axis=1)[row::,col::])
+    return cor
 
 
 # let's test that it works indeed by manually rolling (shifting circurlarly) the same image
@@ -55,21 +73,29 @@ print('cor2d:%d,%d'%(i-8,j-8))
 cor=my_correlate2d(ia-ia.mean(),np.roll(ia,(4,-7),axis=(0,1))-ia.mean())
 i,j = np.unravel_index(cor.argmin(), cor.shape)
 print('cor2d:%d,%d'%(i-8,j-8))
+cor=my_crosscor2d(ia-ia.mean(),np.roll(ia,(4,-7),axis=(0,1))-ia.mean())
+i,j = np.unravel_index(cor.argmax(), cor.shape)
+print('cor2d:%d,%d'%(i-8,j-8))
 c = correlate2d(np.roll(ia,(4,-7),axis=(0,1))-ia.mean(),np.roll(ia,(0,0),axis=(0,1))-ia.mean())
 i,j = np.unravel_index(c[31-8:32+8,31-8:32+8].argmax(), c[31-8:32+8,31-8:32+8].shape)
 print('cor2d:%d,%d'%(i-8,j-8))
-cor= match_template(ia,ib)
+cor= match_template(ia-ia.mean(),ib-ib.mean())
 i,j = np.unravel_index(cor.argmin(), cor.shape)
 print('cor2d:%d,%d'%(i-8,j-8))
-cor = my_correlate2d(ia,ib)
+cor = my_correlate2d(ia-ia.mean(),ib-ib.mean())
 i,j = np.unravel_index(cor.argmin(), cor.shape)
 print('cor2d:%d,%d'%(i-8,j-8))
-c = correlate2d(ib-ib.mean(),ia-ia.mean())
+c1 = my_crosscor2d(ia-ia.mean(),ib-ib.mean())
+i,j = np.unravel_index(c.argmax(), c.shape)
+print('cor2d:%d,%d'%(i-8,j-8))
+c2 = correlate2d(ib-ib.mean(),ia-ia.mean())
 i,j = np.unravel_index(c.argmax(), c.shape)
 print('cor2d:%d,%d'%(i-31,j-31))
 iw = 32
-
-x,y,u_dif,v_dif,u_cor,v_cor,u_my,v_my = [],[],[],[],[],[],[],[]
+size=32 #size 32X32
+ia = a[:iw,:iw].copy()
+ib = b[:iw,:iw].copy()
+x,y,u_dif,v_dif,u_cor,v_cor,u_my,v_my,u_mycross,v_mycross = [],[],[],[],[],[],[],[],[],[]
 for k in range(0,a.shape[0],iw):
     for m in range(0,a.shape[1],iw):
         ia = a[k:k+iw,m:m+iw].copy()
@@ -89,6 +115,10 @@ for k in range(0,a.shape[0],iw):
         row,col = np.unravel_index(c_my.argmin(), c_my.shape)
         u_my.append(col -8)
         v_my.append(row- 8)
+        c_mycross = my_crosscor2d(ia-ia.mean(),ib-ib.mean())
+        row,col = np.unravel_index(c_mycross.argmax(), c_mycross.shape)
+        u_mycross.append(col -8)
+        v_mycross.append(row- 8)
 
 plt.figure(figsize=(12,10))
 M_dif = np.sqrt(pow(np.array(u_dif), 2) + pow(np.array(v_dif), 2))
@@ -101,8 +131,12 @@ plt.quiver(x,y,u_cor,v_cor,M_cor)
 plt.figure(figsize=(12,10))
 M_my = np.sqrt(pow(np.array(u_my), 2) + pow(np.array(v_my), 2))
 plt.quiver(x,y,u_my,v_my,M_my)
+
+plt.figure(figsize=(12,10))
+M_mycross = np.sqrt(pow(np.array(u_mycross), 2) + pow(np.array(v_mycross), 2))
+plt.quiver(x,y,u_mycross,v_mycross,M_mycross)
 #the results are abit different lets explore it
-q_dif_my= np.array(M_dif)==np.array(M_my)
+q_dif_my= np.array(M_cor)==np.array(M_mycross)
 problem_i=np.where(q_dif_my==False)
 k=int(y[problem_i[0][1]]-(iw/2.-1))
 m=int(x[problem_i[0][1]]-(iw/2.-1))
