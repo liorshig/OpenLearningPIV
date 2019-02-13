@@ -1,2 +1,2 @@
 # OpenLearningPIV
-documantation of process toward undertanding PIV better guided by alex liberzon
+documentation of lior's process toward undertanding PIV better guided by alex liberzon
