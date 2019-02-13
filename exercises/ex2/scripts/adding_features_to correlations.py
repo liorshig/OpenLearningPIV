@@ -12,17 +12,15 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.signal import correlate2d
-from skimage import img_as_float
+from skimage.feature import match_template
 # load the images: 
 a = plt.imread('B005_1.tif')
 b = plt.imread('B005_2.tif')
-iw = 32
+iw = 16
 ia = a[:iw,:iw].copy()
 ib = b[:iw,:iw].copy()
-#ia=ia.astype(np.int16)
-#ib=ib.astype(np.int16)
-ia=img_as_float(ia)
-ib=img_as_float(ib)
+ia=ia.astype(np.float)
+ib=ib.astype(np.float)
 #lets find the displacemant
 def RMS2D_1(img, template,maxroll=8):
     #CALCULATES the RMS of the difference between img and template at different shifts of img
@@ -35,12 +33,12 @@ def RMS2D_1(img, template,maxroll=8):
     #the function returns a 2d array C at size maxroll+1Xmaxroll+1 wherers
     #C[maxroll,maxroll]-Rms of the difference withount shifts img[i,j] tem[i,j]
     #C[maxroll+x,maxroll+y]-Rms of the difference with shifts img[i+x,j+y] tem[i,j]
-    mindist = float('inf')
-    idx = (0,0)
+    
     cor=np.zeros((maxroll*2+1,maxroll*2+1))
     for row in range(-maxroll,maxroll+1):
         for col in range(-maxroll,maxroll+1):
-            cor[maxroll+row,maxroll+col]=np.sqrt(np.sum(np.square(np.roll(img,(row,col),axis=(0,1)) - template))/np.size(img))                  
+            norm=np.mean(img)*np.size(img)+1
+            cor[maxroll+row,maxroll+col]=np.sqrt(np.sum(np.square(np.roll(img,(row,col),axis=(0,1)) - template))/norm)                  
     return cor
 #lets find the displacemant
 def RMS2D_2(img, template, maxroll=8):
@@ -58,18 +56,27 @@ def RMS2D_2(img, template, maxroll=8):
     for row in range(maxroll+1):
         for col in range(maxroll+1):
             if col==0 and row==0:
-                cor[maxroll,maxroll]=np.sqrt(np.sum(np.square(template - img))/np.size(template))
+                norm=np.mean(img)*np.size(img)+1
+                cor[maxroll,maxroll]=np.sqrt(np.sum(np.square(template - img))/norm)
             elif col==0 and row!=0:
-                cor[maxroll+row,maxroll]=np.sqrt(np.sum(np.square(template[row::,:] - np.roll(img,row,axis=0)[row::,:]))/np.size(template[row::,:]))
-                cor[maxroll-row,maxroll]=np.sqrt(np.sum(np.square(img[row::,:] - np.roll(template,row,axis=0)[row::,:]))/np.size(template[row::,:]))
+                norm1=np.mean(np.roll(img,row,axis=0)[row::,:])*np.size(img[row::,:])+1
+                norm2=np.mean(img[row::,:])*np.size(img[row::,:])+1
+                cor[maxroll+row,maxroll]=np.sqrt(np.sum(np.square(template[row::,:] - np.roll(img,row,axis=0)[row::,:]))/norm1)
+                cor[maxroll-row,maxroll]=np.sqrt(np.sum(np.square(img[row::,:] - np.roll(template,row,axis=0)[row::,:]))/norm2)
             elif row==0 and col!=0:
-                cor[maxroll,maxroll+col]=np.sqrt(np.sum(np.square(template[:,col::] - np.roll(img,col,axis=1)[:,col::]))/np.size(template[:,col::]))
-                cor[maxroll,maxroll-col]=np.sqrt(np.sum(np.square(img[:,col::] - np.roll(template,col,axis=1)[:,col::]))/np.size(template[:,col::]))
+                norm1=np.mean(np.roll(img,col,axis=1)[:,col::])*np.size(img[:,col::])+1
+                norm2=np.mean(img[:,col::])*np.size(img[:,col::])+1
+                cor[maxroll,maxroll+col]=np.sqrt(np.sum(np.square(template[:,col::] - np.roll(img,col,axis=1)[:,col::]))/norm1)
+                cor[maxroll,maxroll-col]=np.sqrt(np.sum(np.square(img[:,col::] - np.roll(template,col,axis=1)[:,col::]))/norm2)
             else:
-                cor[maxroll+row,maxroll+col]=np.sqrt(np.sum(np.square(template[row::,col::] - np.roll(img,(row,col),axis=(0,1))[row::,col::]))/np.size(template[row::,col::]))
-                cor[maxroll-row,maxroll-col]=np.sqrt(np.sum(np.square(img[row::,col::] - np.roll(template,(row,col),axis=(0,1))[row::,col::]))/np.size(template[row::,col::]))
-                cor[maxroll+row,maxroll-col]=np.sqrt(np.sum(np.square(np.roll(template,col,axis=1)[row::,col::] - np.roll(img,row,axis=0)[row::,col::]))/np.size(template[row::,col::]))
-                cor[maxroll-row,maxroll+col]=np.sqrt(np.sum(np.square(np.roll(template,row,axis=0)[row::,col::] - np.roll(img,col,axis=1)[row::,col::]))/np.size(template[row::,col::]))
+                norm1=np.mean(np.roll(img,(row,col),axis=(0,1))[row::,col::])*np.size(img[row::,col::])+1
+                norm2=np.mean(img[row::,col::])*np.size(img[row::,col::])+1
+                norm3=np.mean(np.roll(img,row,axis=0)[row::,col::])*np.size(img[row::,col::])+1
+                norm4=np.mean(np.roll(img,col,axis=1)[row::,col::])*np.size(img[row::,col::])+1
+                cor[maxroll+row,maxroll+col]=np.sqrt(np.sum(np.square(template[row::,col::] - np.roll(img,(row,col),axis=(0,1))[row::,col::]))/norm1)
+                cor[maxroll-row,maxroll-col]=np.sqrt(np.sum(np.square(img[row::,col::] - np.roll(template,(row,col),axis=(0,1))[row::,col::]))/norm2)
+                cor[maxroll+row,maxroll-col]=np.sqrt(np.sum(np.square(np.roll(template,col,axis=1)[row::,col::] - np.roll(img,row,axis=0)[row::,col::]))/norm3)
+                cor[maxroll-row,maxroll+col]=np.sqrt(np.sum(np.square(np.roll(template,row,axis=0)[row::,col::] - np.roll(img,col,axis=1)[row::,col::]))/norm4)
     return cor
 def my_crosscor2d(img, template, maxroll=8):
     #CALCULATES the cross corelation  between img and template at different shifts of img
@@ -114,10 +121,10 @@ print('cor2d:%d,%d'%(i-8,j-8))
 c = correlate2d(np.roll(ia,(4,-7),axis=(0,1))-ia.mean(),np.roll(ia,(0,0),axis=(0,1))-ia.mean())
 i,j = np.unravel_index(c[iw-1-8:iw+8,iw-1-8:iw+8].argmax(), c[iw-1-8:iw+8,iw-1-8:iw+8].shape)
 print('cor2d:%d,%d'%(i-8,j-8))
-cor1= RMS2D_1(ia-ia.mean(),ib-ib.mean())
+cor1= RMS2D_1(ia,ib)
 i,j = np.unravel_index(cor1.argmin(), cor1.shape)
 print('RMS1:%d,%d'%(i-8,j-8))
-cor2 =RMS2D_2(ia-ia.mean(),ib-ib.mean())
+cor2 =RMS2D_2(ia,ib)
 i,j = np.unravel_index(cor2.argmin(), cor2.shape)
 print('RMS2:%d,%d'%(i-8,j-8))
 cor3 = my_crosscor2d(ia-ia.mean(),ib-ib.mean())
@@ -125,7 +132,7 @@ i,j = np.unravel_index(cor3.argmax(), cor3.shape)
 print('my cross cor:%d,%d'%(i-8,j-8))
 cor4 = correlate2d(ib-ib.mean(),ia-ia.mean())
 i,j = np.unravel_index(cor4.argmax(), cor4.shape)
-print('scipy cross cor:%d,%d'%(i-31,j-31))
+print('scipy cross cor:%d,%d'%(i-15,j-15))
 fig = plt.figure()
 ax1 = fig.add_subplot(2, 2, 1, projection='3d')
 x=np.arange(8*2+1)
@@ -147,10 +154,8 @@ for k in range(0,a.shape[0],iw):
     for m in range(0,a.shape[1],iw):
         ia = a[k:k+iw,m:m+iw].copy()
         ib = b[k:k+iw,m:m+iw].copy()
-#        ia=ia.astype(np.int16)
-#        ib=ib.astype(np.int16)
-        ia=img_as_float(ia)
-        ib=img_as_float(ib)
+        ia=ia.astype(np.float)
+        ib=ib.astype(np.float)
         cor_rms1 = RMS2D_1(ia,ib)
         row,col = np.unravel_index(cor_rms1.argmin(), cor_rms1.shape)
         y.append(k+iw/2.-1)
